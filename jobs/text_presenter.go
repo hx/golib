@@ -19,11 +19,15 @@ type TextPresenter struct {
 	// SuffixSkipped is appended to lines of jobs that are queued but do not run.
 	SuffixSkipped string
 
+	// Indent is prepended to sub-jobs.
+	Indent string
+
 	job       Job
 	writer    io.Writer
 	formatter Formatter
 
-	width int
+	width      []int
+	runningJob Job
 
 	queue   []Event
 	started map[Job]struct{}
@@ -39,12 +43,13 @@ func NewTextPresenter(job Job, writer io.Writer, formatter Formatter) *TextPrese
 		SuffixOk:      "  ok",
 		SuffixFail:    "  FAIL",
 		SuffixSkipped: "  -",
+		Indent:        "  ",
 	}
 }
 
 // Run implements Job.
 func (t *TextPresenter) Run(ctx *Context) (err error) {
-	t.width = 0
+	t.width = []int{0}
 	t.queue = nil
 	t.started = make(map[Job]struct{})
 	for event := range ctx.Run(t.job) {
@@ -54,20 +59,31 @@ func (t *TextPresenter) Run(ctx *Context) (err error) {
 		}
 		switch event := event.(type) {
 		case *EventQueued:
+			if t.runningJob != nil {
+				t.increaseIndent()
+				t.runningJob = nil
+			}
 			t.queue = append(t.queue, event)
-			if width := len(text); width > t.width {
-				t.width = width
+			if width := ansi.Len(text); width > t.width[0] {
+				t.width[0] = width
 			}
 		case *EventStarted:
+			t.runningJob = event.Job()
 			t.started[event.Job()] = struct{}{}
+			t.indent()
 			t.write(t.justify(text))
 		case *EventFinished:
-			if event.Error() == nil {
-				t.write(t.SuffixOk + "\n")
+			if t.runningJob == event.Job() {
+				if event.Error() == nil {
+					t.write(t.SuffixOk + "\n")
+				} else {
+					t.write(t.SuffixFail + "\n")
+					err = event.Error()
+				}
 			} else {
-				t.write(t.SuffixFail + "\n")
-				err = event.Error()
+				t.decreaseIndent()
 			}
+			t.runningJob = nil
 		}
 	}
 	if t.ShowSkipped {
@@ -83,5 +99,22 @@ func (t *TextPresenter) Run(ctx *Context) (err error) {
 	return
 }
 
-func (t *TextPresenter) justify(str string) string { return ansi.PadRight(str, t.width) }
+func (t *TextPresenter) justify(str string) string { return ansi.PadRight(str, t.width[0]) }
 func (t *TextPresenter) write(str string)          { t.writer.Write([]byte(str)) }
+
+func (t *TextPresenter) indent() {
+	for i, w := range t.width {
+		if i != 0 && w != 0 {
+			t.write(t.Indent)
+		}
+	}
+}
+
+func (t *TextPresenter) increaseIndent() {
+	t.write("\n")
+	t.width = append([]int{0}, t.width...)
+}
+
+func (t *TextPresenter) decreaseIndent() {
+	t.width = t.width[1:]
+}
