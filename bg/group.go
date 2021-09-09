@@ -1,6 +1,7 @@
 package bg
 
 import (
+	"errors"
 	"os"
 	"os/signal"
 	"sync"
@@ -9,6 +10,10 @@ import (
 // Group manages a group of services by running them in the background, and stopping them when Stop is called. If any
 // service unexpectedly stops on its own, all other services will also be stopped.
 type Group struct {
+	// If set, OnShutdown will be called before the Group starts stopping its running services. If the shutdown is
+	// caused by an error, that error will be passed as OnShutdown's argument.
+	OnShutdown func(err error)
+
 	wait     sync.WaitGroup
 	stopped  bool
 	error    error
@@ -31,9 +36,6 @@ func (g *Group) Add(services ...Service) {
 // wrapped in UnexpectedStop.
 func (g *Group) Wait() error {
 	g.wait.Wait()
-	if g.error == expectedStop {
-		return nil
-	}
 	return g.error
 }
 
@@ -52,8 +54,9 @@ func (g *Group) Stop() {
 	}
 
 	err, isErr := g.error.(*UnexpectedStop)
-	if err == nil {
-		g.error = expectedStop
+
+	if g.OnShutdown != nil {
+		g.OnShutdown(err)
 	}
 
 	for i := len(g.services) - 1; i >= 0; i-- {
@@ -101,7 +104,10 @@ func (g *Group) StopOnSignal(sig ...os.Signal) {
 func (g *Group) run(service Service) {
 	err := service.Run()
 	g.mutex.Lock()
-	if g.error == nil {
+	if !g.stopped {
+		if err == nil {
+			err = errors.New("no error")
+		}
 		g.error = &UnexpectedStop{service, err}
 		g.mutex.Unlock()
 		g.Stop()
