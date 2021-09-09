@@ -15,20 +15,36 @@ type Group struct {
 	OnShutdown func(err error)
 
 	wait     sync.WaitGroup
+	topMutex sync.Mutex
 	stopped  bool
 	error    error
 	services []Service
-	mutex    sync.Mutex
+	endMutex sync.Mutex
 	signals  chan os.Signal
 }
 
 // Add starts the given services in new goroutines, and adds them to the group.
 func (g *Group) Add(services ...Service) {
-	g.wait.Add(len(services))
-	g.services = append(g.services, services...)
-	for _, service := range services {
-		go g.run(service)
+	g.topMutex.Lock()
+	if !g.stopped {
+		g.wait.Add(len(services))
+		g.services = append(g.services, services...)
+		for _, service := range services {
+			go g.run(service)
+		}
 	}
+	g.topMutex.Unlock()
+}
+
+// Check calls callback with true if all servers are running as expected, or false if the group is shutting down, or has
+// shut down.
+//
+// It is safe to call Add from within callback. Calls Stop and StopOnSignal will deadlock, as will calls to Wait if the
+// group is still alive.
+func (g *Group) Check(callback func(groupIsAlive bool)) {
+	g.endMutex.Lock()
+	defer g.endMutex.Unlock()
+	callback(!g.stopped)
 }
 
 // Wait returns when all services have stopped. If Stop was called, the first service to return a non-nil error from its
@@ -41,17 +57,21 @@ func (g *Group) Wait() error {
 
 // Stop calls Service.Stop on all running services, starting with the most recently added service.
 func (g *Group) Stop() {
-	g.mutex.Lock()
-	defer g.mutex.Unlock()
+	g.endMutex.Lock()
+	defer g.endMutex.Unlock()
+
+	if g.stopped {
+		return
+	}
 
 	if g.signals != nil {
 		signal.Stop(g.signals)
 		g.signals = nil
 	}
 
-	if g.stopped {
-		return
-	}
+	g.topMutex.Lock()
+	g.stopped = true
+	g.topMutex.Unlock()
 
 	err, isErr := g.error.(*UnexpectedStop)
 
@@ -66,8 +86,6 @@ func (g *Group) Stop() {
 		}
 		service.Stop()
 	}
-
-	g.stopped = true
 }
 
 // StopOnSignal listens in a new goroutine for the given signals, and calls Stop if and when they are received. If Stop
@@ -76,7 +94,7 @@ func (g *Group) Stop() {
 // Typically, you'll be using an os.Interrupt to catch CTRL+C:
 //  g.StopOnSignal(os.Interrupt)
 func (g *Group) StopOnSignal(sig ...os.Signal) {
-	g.mutex.Lock()
+	g.endMutex.Lock()
 
 	if g.signals != nil {
 		signal.Stop(g.signals)
@@ -87,32 +105,32 @@ func (g *Group) StopOnSignal(sig ...os.Signal) {
 
 	signals := g.signals
 
-	g.mutex.Unlock()
+	g.endMutex.Unlock()
 
 	go func() {
 		<-signals
-		g.mutex.Lock()
+		g.endMutex.Lock()
 
 		signal.Stop(g.signals)
 		g.signals = nil
 
-		g.mutex.Unlock()
+		g.endMutex.Unlock()
 		g.Stop()
 	}()
 }
 
 func (g *Group) run(service Service) {
 	err := service.Run()
-	g.mutex.Lock()
+	g.endMutex.Lock()
 	if !g.stopped {
 		if err == nil {
 			err = errors.New("no error")
 		}
 		g.error = &UnexpectedStop{service, err}
-		g.mutex.Unlock()
+		g.endMutex.Unlock()
 		g.Stop()
 	} else {
-		g.mutex.Unlock()
+		g.endMutex.Unlock()
 	}
 	g.wait.Done()
 }

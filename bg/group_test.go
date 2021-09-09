@@ -119,3 +119,23 @@ func TestGroup_StopOnSignal(t *testing.T) {
 	Equals(t, nil, s1.err)
 	Equals(t, nil, s2.err)
 }
+
+func TestGroup_Add(t *testing.T) {
+	t.Run("after stop", func(t *testing.T) {
+		s1 := NewDummyService()
+		s2 := NewDummyService()
+
+		group := new(Group)
+		group.Add(s1)
+		<-s1.started
+		doa := errors.New("doa")
+		s1.Fail(doa)
+		group.Wait()
+		group.Add(s2)
+		err := group.Wait()
+
+		Assert(t, errors.Is(err, doa), "error should be DOA")
+		Equals(t, "failed", s1.state)
+		Equals(t, "not started", s2.state)
+	})
+}
