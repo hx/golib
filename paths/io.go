@@ -6,30 +6,30 @@ import (
 	"os"
 )
 
-func (p *Path) CreateMode(mode os.FileMode) (file *os.File, err error) {
+func (p *Path) CreateMode(mode os.FileMode) (file File, err error) {
 	if err = p.Parent().Make(); err != nil {
 		return
 	}
 	return p.tree.sys.OpenFile(p.path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, mode)
 }
 
-func (p *Path) Create() (*os.File, error)                { return p.CreateMode(0644) }
-func (p *Path) MustCreate() *os.File                     { return must1(p.Create()).(*os.File) }
-func (p *Path) MustCreateMode(mode os.FileMode) *os.File { return must1(p.CreateMode(mode)).(*os.File) }
+func (p *Path) Create() (File, error)                { return p.CreateMode(0644) }
+func (p *Path) MustCreate() File                     { return must1(p.Create()).(File) }
+func (p *Path) MustCreateMode(mode os.FileMode) File { return must1(p.CreateMode(mode)).(File) }
 
-func (p *Path) AppendMode(mode os.FileMode) (file *os.File, err error) {
+func (p *Path) AppendMode(mode os.FileMode) (file File, err error) {
 	if err = p.Parent().Make(); err != nil {
 		return
 	}
 	return p.tree.sys.OpenFile(p.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY|os.O_SYNC, mode)
 }
 
-func (p *Path) Append() (*os.File, error)                { return p.AppendMode(0644) }
-func (p *Path) MustAppend() *os.File                     { return must1(p.Append()).(*os.File) }
-func (p *Path) MustAppendMode(mode os.FileMode) *os.File { return must1(p.AppendMode(mode)).(*os.File) }
+func (p *Path) Append() (File, error)                { return p.AppendMode(0644) }
+func (p *Path) MustAppend() File                     { return must1(p.Append()).(File) }
+func (p *Path) MustAppendMode(mode os.FileMode) File { return must1(p.AppendMode(mode)).(File) }
 
-func (p *Path) Open() (*os.File, error) { return p.tree.sys.OpenFile(p.path, os.O_RDONLY, 0) }
-func (p *Path) MustOpen() *os.File      { return must1(p.Open()).(*os.File) }
+func (p *Path) Open() (File, error) { return p.tree.sys.OpenFile(p.path, os.O_RDONLY, 0) }
+func (p *Path) MustOpen() File      { return must1(p.Open()).(File) }
 
 func (p *Path) WriteFrom(reader io.Reader) (err error) {
 	writer := p.WriteCloser()

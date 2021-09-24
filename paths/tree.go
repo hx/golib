@@ -8,7 +8,7 @@ type Tree struct {
 	listeners map[uint64]Listener
 }
 
-func NewTree() (t *Tree) { return NewTreeWithSystem(local{}) }
+func NewTree() (t *Tree) { return NewTreeWithSystem(LocalSystem) }
 
 func NewTreeWithSystem(system System) (t *Tree) {
 	t = &Tree{

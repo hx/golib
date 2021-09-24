@@ -9,6 +9,8 @@ import (
 
 type local struct{}
 
+var LocalSystem System = local{}
+
 func (l local) Chmod(name string, mode os.FileMode) error         { return os.Chmod(name, mode) }
 func (l local) CurrentUser() (*user.User, error)                  { return user.Current() }
 func (l local) Getwd() (dir string, err error)                    { return os.Getwd() }
@@ -28,6 +30,6 @@ func (l local) Chtimes(name string, atime time.Time, mtime time.Time) error {
 	return os.Chtimes(name, atime, mtime)
 }
 
-func (l local) OpenFile(name string, flag int, perm os.FileMode) (*os.File, error) {
+func (l local) OpenFile(name string, flag int, perm os.FileMode) (File, error) {
 	return os.OpenFile(name, flag, perm)
 }

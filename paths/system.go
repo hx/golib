@@ -1,10 +1,16 @@
 package paths
 
 import (
+	"io"
 	"os"
 	"os/user"
 	"time"
 )
+
+type File interface {
+	io.ReadCloser
+	io.WriteSeeker
+}
 
 type System interface {
 	Chmod(name string, mode os.FileMode) error
@@ -15,7 +21,7 @@ type System interface {
 	Join(elem ...string) string
 	Lstat(name string) (os.FileInfo, error)
 	MkdirAll(path string, perm os.FileMode) error
-	OpenFile(name string, flag int, perm os.FileMode) (*os.File, error)
+	OpenFile(name string, flag int, perm os.FileMode) (File, error)
 	ReadDir(name string) ([]os.DirEntry, error)
 	ReadFile(name string) ([]byte, error)
 	Readlink(name string) (string, error)
