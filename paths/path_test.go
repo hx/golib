@@ -1,5 +1,3 @@
-// +build !windows
-
 package paths_test
 
 import (
@@ -17,7 +15,16 @@ func pathTestFile() *Path {
 
 func TestPath_Join(t *testing.T) {
 	root := NewTree()
-	e := func(expected string, parts ...string) { Equals(t, expected, root.Join(parts...).String()) }
+	e := func(expected string, parts ...string) {
+		if runtime.GOOS == "windows" {
+			for i, v := range parts {
+				parts[i] = reslash(v)
+			}
+			Equals(t, LocalSystem.Root()+reslash(expected[1:]), root.Join(parts...).String())
+		} else {
+			Equals(t, expected, root.Join(parts...).String())
+		}
+	}
 	e("/foo", "foo")
 	e("/foo/bar", "foo", "bar")
 	e("/bar", "foo", "..", "bar")
@@ -51,10 +58,19 @@ func TestPath_MustStat(t *testing.T) {
 		notAFile.MustStat()
 		return
 	}()
-	Equals(t, fmt.Sprintf("lstat %s: no such file or directory", notAFile), err.(error).Error())
+	if runtime.GOOS == "windows" {
+		Equals(t, fmt.Sprintf("CreateFile %s: The system cannot find the file specified.", notAFile), err.(error).Error())
+	} else {
+		Equals(t, fmt.Sprintf("lstat %s: no such file or directory", notAFile), err.(error).Error())
+	}
 }
 
 func TestPath_ReadLink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// The link in the repo isn't readable on Windows.
+		// TODO: this test, on Windows
+		return
+	}
 	target := pathTestFile()
 	link := target.Parent().Join("path_test.link")
 	Equals(t, target.String(), link.MustReadLink().String())

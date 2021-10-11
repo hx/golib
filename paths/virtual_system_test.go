@@ -5,14 +5,20 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"regexp"
 	"runtime"
 	"testing"
 	"time"
 )
 
 func TestVirtualSystem_Root(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		Equals(t, "/", NewVirtualSystem().Root())
+	root := NewVirtualSystem().Root()
+	if runtime.GOOS == "windows" {
+		Assert(t,
+			regexp.MustCompile("^[A-Z]:\\\\$").MatchString(root),
+			root+" should be a letter, colon, and backslash")
+	} else {
+		Equals(t, "/", root)
 	}
 }
 
@@ -27,7 +33,7 @@ func TestVirtualSystem_Lstat(t *testing.T) {
 	sys, tree := testSys()
 	tree.Join("foo").MustWriteString("bar")
 
-	stat, err := sys.Lstat("/foo")
+	stat, err := sys.Lstat(reslash("/foo"))
 	Ok(t, err)
 	Equals(t, "foo", stat.Name())
 	Equals(t, false, stat.IsDir())
@@ -53,24 +59,24 @@ func TestVirtualSystem_Chtimes(t *testing.T) {
 	newTime := time.Now().Add(time.Hour * -5)
 	NotEquals(t, sys.rootDir.children[0].entry().accessed, newTime)
 	NotEquals(t, sys.rootDir.children[0].entry().modified, newTime.Add(5))
-	Ok(t, sys.Chtimes("/foo", newTime, newTime.Add(5)))
+	Ok(t, sys.Chtimes(reslash("/foo"), newTime, newTime.Add(5)))
 	Equals(t, sys.rootDir.children[0].entry().accessed, newTime)
 	Equals(t, sys.rootDir.children[0].entry().modified, newTime.Add(5))
 }
 
 func TestVirtualSystem_MkdirAll(t *testing.T) {
 	sys, tree := testSys()
-	Ok(t, sys.MkdirAll("/foo/bar/baz", 0755))
-	Assert(t, tree.Join("foo/bar/baz").IsDir(), "dir should exist")
-	Equals(t, 0755|fs.ModeDir, tree.Join("/foo/bar/baz").MustStat().Mode())
-	Ok(t, sys.MkdirAll("/foo/bar/baz", 0755))
+	Ok(t, sys.MkdirAll(reslash("/foo/bar/baz"), 0755))
+	Assert(t, tree.Join(reslash("foo/bar/baz")).IsDir(), "dir should exist")
+	Equals(t, 0755|fs.ModeDir, tree.Join(reslash("/foo/bar/baz")).MustStat().Mode())
+	Ok(t, sys.MkdirAll(reslash("/foo/bar/baz"), 0755))
 }
 
 func TestVirtualSystem_OpenFile(t *testing.T) {
 	sys, tree := testSys()
 
 	t.Run("create", func(t *testing.T) {
-		f, err := sys.OpenFile("/foo", os.O_CREATE|os.O_EXCL, 0644)
+		f, err := sys.OpenFile(reslash("/foo"), os.O_CREATE|os.O_EXCL, 0644)
 		Ok(t, err)
 		n, err := f.Write([]byte("hello"))
 		Ok(t, err)
@@ -80,7 +86,7 @@ func TestVirtualSystem_OpenFile(t *testing.T) {
 	})
 
 	t.Run("append", func(t *testing.T) {
-		f, err := sys.OpenFile("/foo", os.O_APPEND, 0644)
+		f, err := sys.OpenFile(reslash("/foo"), os.O_APPEND, 0644)
 		Ok(t, err)
 		n, err := f.Write([]byte(" world"))
 		Ok(t, err)
@@ -90,7 +96,7 @@ func TestVirtualSystem_OpenFile(t *testing.T) {
 	})
 
 	t.Run("truncate", func(t *testing.T) {
-		f, err := sys.OpenFile("/foo", os.O_TRUNC, 0644)
+		f, err := sys.OpenFile(reslash("/foo"), os.O_TRUNC, 0644)
 		Ok(t, err)
 		n, err := f.Write([]byte("bye"))
 		Ok(t, err)
@@ -100,7 +106,7 @@ func TestVirtualSystem_OpenFile(t *testing.T) {
 	})
 
 	t.Run("read", func(t *testing.T) {
-		f, err := sys.OpenFile("/foo", os.O_RDONLY, 0644)
+		f, err := sys.OpenFile(reslash("/foo"), os.O_RDONLY, 0644)
 		Ok(t, err)
 		b, err := io.ReadAll(f)
 		Ok(t, err)
@@ -115,7 +121,7 @@ func TestVirtualSystem_ReadDir(t *testing.T) {
 	tree.Join("foo").MustTouch()
 	tree.Join("bar").MustMake()
 
-	entries, err := sys.ReadDir("/")
+	entries, err := sys.ReadDir(reslash("/"))
 	Ok(t, err)
 	Equals(t, 2, len(entries))
 
@@ -148,7 +154,7 @@ func TestVirtualSystem_Remove(t *testing.T) {
 func TestVirtualSystem_Rename(t *testing.T) {
 	sys, tree := testSys()
 	tree.Join("foo").MustMake()
-	Ok(t, sys.Rename("/foo", "/bar"))
+	Ok(t, sys.Rename(reslash("/foo"), reslash("/bar")))
 	Equals(t, 1, len(sys.rootDir.children))
 	Equals(t, "bar", sys.rootDir.children[0].entry().name)
 }
@@ -156,15 +162,15 @@ func TestVirtualSystem_Rename(t *testing.T) {
 func TestVirtualSystem_Readlink(t *testing.T) {
 	sys, tree := testSys()
 	tree.Join("foo").MustMake()
-	Ok(t, sys.Symlink("/foo", "/foo/back2foo"))
-	link, err := sys.Readlink("/foo/back2foo")
+	Ok(t, sys.Symlink(reslash("/foo"), reslash("/foo/back2foo")))
+	link, err := sys.Readlink(reslash("/foo/back2foo"))
 	Ok(t, err)
-	Equals(t, "/foo", link)
+	Equals(t, reslash("/foo"), link)
 }
 
 func TestVirtualSystem_Symlink(t *testing.T) {
 	sys, tree := testSys()
 	tree.Join("foo").MustMake()
-	Ok(t, sys.Symlink("/foo", "/foo/back2foo"))
-	Equals(t, "/foo", sys.rootDir.children[0].(*virtualDir).children[0].(*virtualSymlink).target)
+	Ok(t, sys.Symlink(reslash("/foo"), reslash("/foo/back2foo")))
+	Equals(t, reslash("/foo"), sys.rootDir.children[0].(*virtualDir).children[0].(*virtualSymlink).target)
 }

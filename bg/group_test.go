@@ -5,6 +5,7 @@ import (
 	. "github.com/hx/golib/bg"
 	. "github.com/hx/golib/testing"
 	"os"
+	"runtime"
 	"testing"
 )
 
@@ -96,6 +97,11 @@ func TestGroup_Stop(t *testing.T) {
 }
 
 func TestGroup_StopOnSignal(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Interrupt is not implemented on Windows
+		return
+	}
+
 	s1 := NewDummyService()
 	s2 := NewDummyService()
 

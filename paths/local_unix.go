@@ -1,6 +1,9 @@
+//go:build !windows
 // +build !windows
 
 package paths
 
-func (l local) Root() string           { return "/" }
+const root = "/"
+
+func (l local) Root() string           { return root }
 func (l local) SupportsSymlinks() bool { return true }

@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -35,8 +36,22 @@ func (v *virtualDir) root() *virtualDir {
 	return v
 }
 
+func reslash(str string) string {
+	if runtime.GOOS == "windows" {
+		return strings.ReplaceAll(str, "/", "\\")
+	}
+	return str
+}
+
 func (v *virtualDir) resolve(name string) virtualEntry {
-	if filepath.IsAbs(name) {
+	if runtime.GOOS == "windows" &&
+		len(name) >= 2 &&
+		name[1] == ':' &&
+		(name[0] == root[0] || name[0] == root[0]-32) { // -32 converts 'c' to 'C'
+		name = name[2:]
+	}
+	name = reslash(name)
+	if strings.HasPrefix(name, string(os.PathSeparator)) {
 		if v.parent == nil {
 			name = name[len(filepath.VolumeName(name))+1:]
 		} else {

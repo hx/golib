@@ -3,6 +3,8 @@ package paths
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 )
 
@@ -15,8 +17,15 @@ func (p *Path) Join(a ...string) *Path {
 	n := *p
 
 	for _, str := range a {
-		if filepath.IsAbs(str) {
+		if filepath.IsAbs(str) || strings.HasPrefix(str, string(os.PathSeparator)) {
 			n.path = filepath.Clean(str)
+			if runtime.GOOS == "windows" {
+				if n.path == "" {
+					n.path = LocalSystem.Root()
+				} else if n.path[0] == '\\' && (len(n.path) == 1 || n.path[1] != '\\') {
+					n.path = LocalSystem.Root() + n.path[1:]
+				}
+			}
 		} else {
 			n.path = filepath.Join(n.path, str)
 		}
